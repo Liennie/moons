@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sync"
 )
 
 func intAbs(i int) int {
@@ -20,6 +21,29 @@ func intSign(i int) int {
 	default:
 		return 0
 	}
+}
+
+// stolen from https://play.golang.org/p/SmzvkDjYlb
+// greatest common divisor (GCD) via Euclidean algorithm
+func GCD(a, b int) int {
+	for b != 0 {
+		t := b
+		b = a % b
+		a = t
+	}
+	return a
+}
+
+// stolen from https://play.golang.org/p/SmzvkDjYlb
+// find Least Common Multiple (LCM) via GCD
+func LCM(a, b int, integers ...int) int {
+	result := a * b / GCD(a, b)
+
+	for i := 0; i < len(integers); i++ {
+		result = LCM(result, integers[i])
+	}
+
+	return result
 }
 
 type Vector struct {
@@ -46,14 +70,47 @@ func (m *Moon) Energy() int {
 	return m.pos.Energy() * m.vel.Energy()
 }
 
-func (this *Moon) UpdateVelocity(other *Moon) {
+func (this *Moon) UpdateVelocityX(other *Moon) {
 	this.vel.x += intSign(other.pos.x - this.pos.x)
+}
+
+func (this *Moon) UpdateVelocityY(other *Moon) {
 	this.vel.y += intSign(other.pos.y - this.pos.y)
+}
+
+func (this *Moon) UpdateVelocityZ(other *Moon) {
 	this.vel.z += intSign(other.pos.z - this.pos.z)
 }
 
+func (this *Moon) UpdateVelocity(other *Moon) {
+	this.UpdateVelocityX(other)
+	this.UpdateVelocityY(other)
+	this.UpdateVelocityZ(other)
+}
+
+func (this *Moon) MoveX() {
+	this.pos.x += this.vel.x
+}
+
+func (this *Moon) MoveY() {
+	this.pos.y += this.vel.y
+}
+
+func (this *Moon) MoveZ() {
+	this.pos.z += this.vel.z
+}
+
 func (this *Moon) Move() {
-	this.pos = this.pos.Add(this.vel)
+	this.MoveX()
+	this.MoveY()
+	this.MoveZ()
+}
+
+func (this *Moon) Copy() *Moon {
+	return &Moon{
+		pos: this.pos,
+		vel: this.vel,
+	}
 }
 
 func main() {
@@ -76,28 +133,133 @@ func main() {
 		{pos: Vector{4, 14, 4}},
 	}
 
-	const steps = 1000
+	initial := make([]*Moon, len(moons))
+	for i, moon := range moons {
+		initial[i] = moon.Copy()
+	}
 
-	for s := 0; s < steps; s++ {
-		for i, m1 := range moons {
-			for j, m2 := range moons {
-				if i == j {
-					continue
+	stepsX := 0
+	stepsY := 0
+	stepsZ := 0
+
+	wg := sync.WaitGroup{}
+	wg.Add(3)
+
+	go func() {
+		defer wg.Done()
+
+		steps := 0
+
+		for {
+			for i, m1 := range moons {
+				for j, m2 := range moons {
+					if i == j {
+						continue
+					}
+
+					m1.UpdateVelocityX(m2)
 				}
+			}
 
-				m1.UpdateVelocity(m2)
+			for _, m := range moons {
+				m.MoveX()
+			}
+
+			steps++
+
+			repeating := true
+			for i, m1 := range moons {
+				m2 := initial[i]
+				if m1.pos.x != m2.pos.x || m1.vel.x != m2.vel.x {
+					repeating = false
+					break
+				}
+			}
+
+			if repeating {
+				stepsX = steps
+				break
 			}
 		}
+	}()
 
-		for _, m := range moons {
-			m.Move()
+	go func() {
+		defer wg.Done()
+
+		steps := 0
+
+		for {
+			for i, m1 := range moons {
+				for j, m2 := range moons {
+					if i == j {
+						continue
+					}
+
+					m1.UpdateVelocityY(m2)
+				}
+			}
+
+			for _, m := range moons {
+				m.MoveY()
+			}
+
+			steps++
+
+			repeating := true
+			for i, m1 := range moons {
+				m2 := initial[i]
+				if m1.pos.y != m2.pos.y || m1.vel.y != m2.vel.y {
+					repeating = false
+					break
+				}
+			}
+
+			if repeating {
+				stepsY = steps
+				break
+			}
 		}
-	}
+	}()
 
-	total := 0
-	for _, m := range moons {
-		total += m.Energy()
-	}
+	go func() {
+		defer wg.Done()
 
-	fmt.Println(total)
+		steps := 0
+
+		for {
+			for i, m1 := range moons {
+				for j, m2 := range moons {
+					if i == j {
+						continue
+					}
+
+					m1.UpdateVelocityZ(m2)
+				}
+			}
+
+			for _, m := range moons {
+				m.MoveZ()
+			}
+
+			steps++
+
+			repeating := true
+			for i, m1 := range moons {
+				m2 := initial[i]
+				if m1.pos.z != m2.pos.z || m1.vel.z != m2.vel.z {
+					repeating = false
+					break
+				}
+			}
+
+			if repeating {
+				stepsZ = steps
+				break
+			}
+		}
+	}()
+
+	wg.Wait()
+
+	fmt.Println(LCM(stepsX, stepsY, stepsZ))
 }
